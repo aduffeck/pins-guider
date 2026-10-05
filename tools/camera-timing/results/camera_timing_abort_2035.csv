@@ -1,0 +1,18 @@
+mode,wait_s,request_utc,after_request_s,after_previous_image_s,driver_done_after_request_s,first_countdown_after_request_s,first_countdown_left_s,date_obs_minus_request_s,images_after_abort
+abort,0.0,20:35:56.429,1.942,2.563,1.913,0.001,2.500,0.000,0
+abort,0.0,20:35:58.983,2.787,3.398,2.753,0.001,2.500,0.000,0
+abort,0.0,20:36:02.387,1.942,2.559,1.913,0.001,2.500,0.001,0
+abort,0.0,20:36:04.983,2.783,3.437,2.751,0.001,2.500,0.000,0
+abort,0.0,20:36:08.423,1.852,2.509,1.812,0.002,2.500,0.000,0
+abort,0.0,20:36:10.886,2.787,3.397,2.752,0.002,2.500,0.001,0
+abort,1.0,20:36:15.284,1.548,3.160,1.512,0.002,2.500,0.001,0
+abort,1.0,20:36:18.403,2.789,4.360,2.752,0.002,2.500,0.000,0
+abort,1.0,20:36:22.790,1.548,3.146,1.512,0.002,2.500,0.000,0
+abort,1.0,20:36:25.939,2.791,4.392,2.752,0.002,2.500,0.001,0
+abort,1.0,20:36:30.340,1.554,3.164,1.513,0.002,2.500,0.001,0
+abort,1.0,20:36:33.538,2.785,4.429,2.748,0.001,2.500,0.001,0
+
+summary (2.5 s exposures; 'early' = image sooner than exposure + 0.1 s after its request)
+mode  wait  n  early  median after request  median after previous image  median first countdown left
+abort  0.0  6     3                 2.36                         2.98                         2.50
+abort  1.0  6     3                 2.17                         3.76                         2.50
