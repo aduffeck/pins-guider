@@ -48,7 +48,17 @@ Acceptance bar for v1: on the same rig and night, total RMS within ~10% of PHD2,
 
 ## 3. Hardware scope (v1)
 
-* Guide cameras: INDI only (behind `ICameraSource`, native SDK cameras later).
+* Guide cameras: INDI and, as a post-v1 extension, PINS native SDK adapters behind `ICameraSource`.
+  SDK selection uses `GuideCameraDriver = sdk:<vendor>` and an explicit device ID in the camera selection.
+  Supported backends: ASI, QHY, Player One, SVBony (current ToupTek-based and legacy SDKs), ToupTek, Altair, Ogma, Omegon,
+  Risingcam and MallinCam. SDK cameras own an independent connection and in-memory camera settings;
+  they never use the imaging camera mediator to capture or change the imaging profile.
+  SDK capture currently downloads full raw frames (hardware binning supported); subframe requests
+  retain full-frame capture to avoid vendor-specific ROI alignment/orientation differences.
+  SDK correction output is mount pulse guiding; camera ST4 remains available through INDI only.
+  Select a distinct camera for simultaneous imaging and guiding, and disconnect an INDI connection
+  to the same physical camera before opening it through an SDK. Missing SDK libraries are reported
+  during device discovery/connection; available backends do not imply connected hardware.
 * Correction outputs (selectable): mount pulse guide `TELESCOPE_TIMED_GUIDE_NS/WE` (default),
   camera ST4 port (INDI guider interface on the camera device), separate INDI guide-port device.
 * Target host: Raspberry Pi 5 / Pi 4 4 GB, ARM64. Budget: < 150 ms processing for a 1936×1216

@@ -7,6 +7,7 @@ using NINA.Equipment.Interfaces.ViewModel;
 using NINA.Plugin;
 using NINA.Plugin.Interfaces;
 using NINA.Profile.Interfaces;
+using NINA.Image.Interfaces;
 
 namespace PinsGuider.Plugin;
 
@@ -35,13 +36,16 @@ public sealed class NativeGuiderProvider : IEquipmentProvider<IGuider>
     private readonly IProfileService profileService;
     private readonly ITelescopeMediator telescopeMediator;
     private readonly ICameraMediator cameraMediator;
+    private readonly IExposureDataFactory exposureDataFactory;
 
     [ImportingConstructor]
-    public NativeGuiderProvider(IProfileService profileService, ITelescopeMediator telescopeMediator, ICameraMediator cameraMediator)
+    public NativeGuiderProvider(IProfileService profileService, ITelescopeMediator telescopeMediator, ICameraMediator cameraMediator,
+        IExposureDataFactory exposureDataFactory)
     {
         this.profileService = profileService;
         this.telescopeMediator = telescopeMediator;
         this.cameraMediator = cameraMediator;
+        this.exposureDataFactory = exposureDataFactory;
     }
 
     public string Name => "PINS Native Guider";
@@ -51,7 +55,7 @@ public sealed class NativeGuiderProvider : IEquipmentProvider<IGuider>
     {
         lock (Gate)
         {
-            instance ??= new NativeGuider(profileService, telescopeMediator, cameraMediator, NativeGuiderPlugin.PluginGuid);
+            instance ??= new NativeGuider(profileService, telescopeMediator, cameraMediator, NativeGuiderPlugin.PluginGuid, exposureDataFactory);
             return [instance];
         }
     }

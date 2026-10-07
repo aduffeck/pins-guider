@@ -12,6 +12,13 @@ if [ ${#args[@]} -eq 0 ]; then
 elif [ "${args[0]}" = test-all ]; then
   args=(test PinsGuider.slnx "${args[@]:1}")
 fi
+mount_root="$PWD"
+container_work=/src
+if [ -d "../../NINA.Equipment" ]; then
+  # Plugin builds/tests reference PINS projects outside this submodule.
+  mount_root="$(cd ../.. && pwd)"
+  container_work=/src/NINA.Plugins/pins-guider
+fi
 exec docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e DOTNET_CLI_TELEMETRY_OPTOUT=1 \
   -e NUGET_PACKAGES=/nuget -v "${NUGET_CACHE:-$HOME/.nuget/packages}:/nuget" \
-  -v "$PWD:/src" -w /src mcr.microsoft.com/dotnet/sdk:10.0 dotnet "${args[@]}"
+  -v "$mount_root:/src" -w "$container_work" mcr.microsoft.com/dotnet/sdk:10.0 dotnet "${args[@]}"

@@ -11,6 +11,7 @@ using NINA.Equipment.Equipment.MyGuider.Advanced;
 using NINA.Equipment.Interfaces;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Profile.Interfaces;
+using NINA.Image.Interfaces;
 using PinsGuider.Engine.Algorithms;
 using PinsGuider.Engine.Calibration;
 using PinsGuider.Engine.Coach;
@@ -87,6 +88,9 @@ public sealed class NativeGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, IGu
     private Guider? guider;
     private GuidingCoach? coach;
     private IndiGuideCamera? indiCamera;
+    private NativeGuideCamera? nativeCamera;
+    private readonly GuideCameraProfileService guideCameraProfile = new();
+    private readonly IExposureDataFactory? exposureDataFactory;
     private Simulator? simulator;
     private GuidingLog? guideLog;
     private StreamWriter? guideLogWriter;
@@ -119,13 +123,21 @@ public sealed class NativeGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, IGu
     {
     }
 
+    /// <summary>Creates the guider with the host's raw exposure factory for native SDK capture.</summary>
+    public NativeGuider(IProfileService profileService, ITelescopeMediator telescopeMediator, ICameraMediator cameraMediator, Guid pluginId,
+        IExposureDataFactory exposureDataFactory)
+        : this(profileService, telescopeMediator, cameraMediator, pluginId, IncidentDirectory, exposureDataFactory: exposureDataFactory)
+    {
+    }
+
     /// <param name="incidentDirectory">Where incidents are stored (tests use a temp folder).</param>
     /// <param name="periodicErrorStorePath">Where the learned periodic errors are stored (tests use a temp file).</param>
     /// <param name="pulseModelStorePath">Where the learned pulse models are stored (tests use a temp file).</param>
     internal NativeGuider(IProfileService profileService, ITelescopeMediator telescopeMediator, ICameraMediator cameraMediator, Guid pluginId,
-        string incidentDirectory, string? periodicErrorStorePath = null, string? pulseModelStorePath = null)
+        string incidentDirectory, string? periodicErrorStorePath = null, string? pulseModelStorePath = null, IExposureDataFactory? exposureDataFactory = null)
     {
         this.profileService = profileService;
+        this.exposureDataFactory = exposureDataFactory;
         this.periodicErrorStorePath = periodicErrorStorePath ?? DefaultPeriodicErrorStorePath;
         this.pulseModelStorePath = pulseModelStorePath ?? DefaultPulseModelStorePath;
         this.telescopeMediator = telescopeMediator;
@@ -287,11 +299,24 @@ public sealed class NativeGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, IGu
         }
         else
         {
-            indiCamera = new IndiGuideCamera(options.GuideCameraDriver, options.GuideCameraDevice, MainCameraName, ConnectedMainCameraName);
-            await indiCamera.ConnectAsync(ct).ConfigureAwait(false);
-            camera = indiCamera;
-            var cam = indiCamera;
-            output = options.UseCameraSt4 ? new CameraSt4PulseOutput(() => cam.DeviceId) : new MountPulseOutput(telescopeMediator);
+            if (NativeCameraCatalog.IsNative(options.GuideCameraDriver))
+            {
+                if (options.UseCameraSt4)
+                    throw new GuideCameraException("Native SDK cameras currently require mount pulse guiding. Disable camera ST4 or choose INDI.");
+                string driver = options.GuideCameraDriver;
+                nativeCamera = new NativeGuideCamera(() => DiscoverNativeCameras(driver), options.GuideCameraDevice, MainCameraName, ConnectedMainCameraName);
+                await nativeCamera.ConnectAsync(ct).ConfigureAwait(false);
+                camera = nativeCamera;
+                output = new MountPulseOutput(telescopeMediator);
+            }
+            else
+            {
+                indiCamera = new IndiGuideCamera(options.GuideCameraDriver, options.GuideCameraDevice, MainCameraName, ConnectedMainCameraName);
+                await indiCamera.ConnectAsync(ct).ConfigureAwait(false);
+                camera = indiCamera;
+                var cam = indiCamera;
+                output = options.UseCameraSt4 ? new CameraSt4PulseOutput(() => cam.DeviceId) : new MountPulseOutput(telescopeMediator);
+            }
             mount = new NinaMountState(telescopeMediator, () => pauseWhenSlewing, () => pauseWhenTrackingOff, mountOptional: options.UseCameraSt4);
             if (settings.FocalLengthMm <= 0)
             {
@@ -369,6 +394,13 @@ public sealed class NativeGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, IGu
         }
 
         simulator = null;
+        var sdkCamera = nativeCamera;
+        nativeCamera = null;
+        if (sdkCamera is not null)
+        {
+            await sdkCamera.DisconnectAsync().ConfigureAwait(false);
+            sdkCamera.Dispose();
+        }
         cameraSource = null;
         darkLibrary = string.Empty;
         autoSelectTcs?.TrySetResult(false);
@@ -589,7 +621,7 @@ public sealed class NativeGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, IGu
                 Connected = Connected,
                 IsSettling = g?.IsSettling ?? false,
                 IsCalibrated = g?.Calibration is not null,
-                CameraName = indiCamera?.Name ?? (simulator is not null ? "Simulator" : options.GuideCameraDevice),
+                CameraName = indiCamera?.Name ?? nativeCamera?.Name ?? (simulator is not null ? "Simulator" : options.GuideCameraDevice),
                 ExposureSeconds = (g?.Settings.ExposureMs ?? options.ToEngineSettings().ExposureMs) / 1000.0,
                 PixelScale = PixelScale,
                 FrameNumber = latestFrame?.FrameNumber ?? 0,
@@ -733,6 +765,10 @@ public sealed class NativeGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, IGu
         return true;
     }
 
+    private IReadOnlyList<ICamera> DiscoverNativeCameras(string driver) => NativeCameraCatalog.GetCameras(
+        driver, guideCameraProfile,
+        exposureDataFactory ?? throw new GuideCameraException("Native camera exposure factory is unavailable."));
+
     public async Task<IReadOnlyList<string>> GetAvailableGuideCameras(CancellationToken ct)
     {
         if (options.IsSimulator)
@@ -744,12 +780,16 @@ public sealed class NativeGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, IGu
         {
             // all cameras of the driver; the main imaging camera (if among them) goes last - the UI marks it
             var main = MainCameraName();
-            var devices = await IndiGuideCamera.ListDevicesAsync(options.GuideCameraDriver, ct).ConfigureAwait(false);
+            var devices = NativeCameraCatalog.IsNative(options.GuideCameraDriver)
+                ? await Task.Run(() => DiscoverNativeCameras(options.GuideCameraDriver).Select(NativeCameraCatalog.Selection).ToList(), ct).ConfigureAwait(false)
+                : await IndiGuideCamera.ListDevicesAsync(options.GuideCameraDriver, ct).ConfigureAwait(false);
             return devices.OrderBy(d => main is not null && string.Equals(d, main, StringComparison.OrdinalIgnoreCase)).ToList();
         }
         catch (Exception ex)
         {
             Logger.Error(ex);
+            if (NativeCameraCatalog.IsNative(options.GuideCameraDriver))
+                throw new GuideCameraException($"Could not discover cameras through {options.GuideCameraDriver}: {ex.Message}", ex);
             return [];
         }
     }
@@ -1607,7 +1647,7 @@ public sealed class NativeGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, IGu
     {
         var g = guider;
         string profileId = profileService.ActiveProfile.Id.ToString();
-        string cameraName = indiCamera?.Name ?? (simulator is not null ? "Simulator" : options.GuideCameraDevice);
+        string cameraName = indiCamera?.Name ?? nativeCamera?.Name ?? (simulator is not null ? "Simulator" : options.GuideCameraDevice);
         string mountName = simulator is not null ? "Simulator"
             : options.UseCameraSt4 ? "ST4"
             : profileService.ActiveProfile.TelescopeSettings.Id is { Length: > 0 } tid && tid != "No_Device" ? tid : "Mount";
@@ -1874,7 +1914,7 @@ public sealed class NativeGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, IGu
         {
             ProfileId = profile?.Id.ToString(),
             ProfileName = profile?.Name,
-            GuideCamera = indiCamera?.Name ?? (simulator is not null ? "Simulator" : options.GuideCameraDevice),
+            GuideCamera = indiCamera?.Name ?? nativeCamera?.Name ?? (simulator is not null ? "Simulator" : options.GuideCameraDevice),
             Mount = mount,
             Simulator = simulator is not null,
             PixelScale = PixelScale,
