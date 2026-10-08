@@ -8,6 +8,7 @@ using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
 using NINA.Equipment.Equipment.MyGuider;
 using NINA.Equipment.Equipment.MyGuider.Advanced;
+using NINA.Equipment.Equipment.MyGuider.PHD2.PhdEvents;
 using NINA.Equipment.Interfaces;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Profile.Interfaces;
@@ -1382,20 +1383,7 @@ public sealed class NativeGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, IGu
             }
         }
 
-        // NINA/ninaAPI guide graph (PHD2 conventions: px; RA duration negative for East, Dec negative for South)
-        var step = new NativeGuideStep
-        {
-            Frame = s.Frame,
-            Time = s.Time,
-            RADistanceRaw = s.RaDistanceRaw,
-            DECDistanceRaw = s.DecDistanceRaw,
-            RADuration = s.RaDirection == GuideDirection.East ? -s.RaDuration : s.RaDuration,
-            DECDuration = s.DecDirection == GuideDirection.South ? -s.DecDuration : s.DecDuration,
-            Event = "GuideStep",
-            TimeStamp = s.Timestamp.ToUnixTimeMilliseconds().ToString(Inv),
-            Host = Environment.MachineName,
-            Inst = 1,
-        };
+        var step = ToNinaGuideStep(s);
         try
         {
             GuideEvent?.Invoke(this, step);
@@ -2117,31 +2105,33 @@ public sealed class NativeGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, IGu
         ElapsedSeconds = snap.Elapsed.TotalSeconds,
     };
 
+    /// <summary>
+    /// Guide step for the NINA guide graph and the ninaAPI step history, in PHD2 conventions (px; the
+    /// duration getters turn East and South negative). A PHD2 step type because both read SNR, star
+    /// mass and HFD only from it.
+    /// </summary>
+    internal static PhdEventGuideStep ToNinaGuideStep(GuideStepEvent s) => new()
+    {
+        Frame = s.Frame,
+        Time = s.Time,
+        // the getter negates RA (NINA's PHD2 parsing); the graphs keep showing the engine's sign
+        RADistanceRaw = -s.RaDistanceRaw,
+        DECDistanceRaw = s.DecDistanceRaw,
+        RADuration = s.RaDuration,
+        RADirection = s.RaDirection?.ToString() ?? string.Empty,
+        DECDuration = s.DecDuration,
+        DECDirection = s.DecDirection?.ToString() ?? string.Empty,
+        StarMass = s.StarMass,
+        SNR = s.Snr,
+        HFD = s.Hfd,
+        AvgDist = s.AvgDist,
+        RALimited = s.RaLimited,
+        DecLimited = s.DecLimited,
+        Event = "GuideStep",
+        TimeStamp = s.Timestamp.ToUnixTimeMilliseconds().ToString(Inv),
+        Host = Environment.MachineName,
+        Inst = 1,
+    };
+
     #endregion
-}
-
-/// <summary>NINA guide step (PHD2 conventions) for GuiderVM / ninaAPI graphs.</summary>
-internal sealed class NativeGuideStep : IGuideStep
-{
-    public double Frame { get; set; }
-
-    public double Time { get; set; }
-
-    public double RADistanceRaw { get; set; }
-
-    public double DECDistanceRaw { get; set; }
-
-    public double RADuration { get; set; }
-
-    public double DECDuration { get; set; }
-
-    public string Event { get; set; } = "GuideStep";
-
-    public string TimeStamp { get; set; } = string.Empty;
-
-    public string Host { get; set; } = string.Empty;
-
-    public int Inst { get; set; }
-
-    public IGuideStep Clone() => (NativeGuideStep)MemberwiseClone();
 }

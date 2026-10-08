@@ -421,6 +421,44 @@ public class NativeGuiderOptionsTests
         var json = JsonSerializer.SerializeToNode(new AdvancedGuiderStatus { DecDrift = south }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!;
         json["decDrift"]!.AsObject().Select(p => p.Key).Should().Equal("direction", "driftArcsecPerMin", "safetyValveOpen");
     }
+
+    [Test]
+    public void Nina_guide_step_carries_the_star_metrics_and_signed_durations()
+    {
+        var step = NativeGuider.ToNinaGuideStep(new GuideStepEvent(DateTimeOffset.UnixEpoch)
+        {
+            Frame = 7,
+            RaDistanceRaw = 0.4,
+            DecDistanceRaw = -0.2,
+            RaDuration = 120,
+            RaDirection = GuideDirection.East,
+            DecDuration = 80,
+            DecDirection = GuideDirection.South,
+            StarMass = 5400,
+            Snr = 32.5,
+            Hfd = 2.1,
+        });
+
+        // NINA's guide graph and the ninaAPI step history read these only from a PHD2 step
+        step.SNR.Should().Be(32.5);
+        step.StarMass.Should().Be(5400);
+        step.HFD.Should().Be(2.1);
+        step.Frame.Should().Be(7);
+        step.RADistanceRaw.Should().Be(0.4);
+        step.DECDistanceRaw.Should().Be(-0.2);
+        step.RADuration.Should().Be(-120, "East is negative");
+        step.DECDuration.Should().Be(-80, "South is negative");
+
+        var westNorth = NativeGuider.ToNinaGuideStep(new GuideStepEvent(DateTimeOffset.UnixEpoch)
+        {
+            RaDuration = 50,
+            RaDirection = GuideDirection.West,
+            DecDuration = 30,
+            DecDirection = GuideDirection.North,
+        });
+        westNorth.RADuration.Should().Be(50);
+        westNorth.DECDuration.Should().Be(30);
+    }
 }
 
 [TestFixture]
