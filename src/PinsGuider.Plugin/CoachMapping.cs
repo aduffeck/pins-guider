@@ -172,20 +172,26 @@ internal static class CoachMapping
         BacklashArcsec = r.BacklashArcsec,
         BacklashState = r.BacklashState,
         BacklashPoints = r.BacklashPoints.Select(p => new AdvancedCoachPoint { X = p.X, Y = p.Y }).ToList(),
-        Pulses = r.Pulses.Select(p => new AdvancedCoachPulse
-        {
-            Direction = p.Direction,
-            DurationMs = p.DurationMs,
-            ExpectedArcsec = p.ExpectedArcsec,
-            MovedArcsec = p.MovedArcsec,
-            Ratio = p.Ratio,
-        }).ToList(),
+        LargeMoveBacklashMs = r.LargeMoveBacklashMs,
+        LargeMoveBacklashArcsec = r.LargeMoveBacklashArcsec,
+        ReversalPulseMs = r.ReversalPulseMs,
+        ReversalMoves = r.ReversalMoves.Select(ToDto).ToList(),
+        Pulses = r.Pulses.Select(ToDto).ToList(),
         MinEffectivePulseRaMs = r.MinEffectivePulseRaMs,
         MinEffectivePulseDecMs = r.MinEffectivePulseDecMs,
         AsymmetryRa = r.AsymmetryRa,
         AsymmetryDec = r.AsymmetryDec,
         RateRatioRa = r.RateRatioRa,
         RateRatioDec = r.RateRatioDec,
+    };
+
+    private static AdvancedCoachPulse ToDto(CoachPulse p) => new()
+    {
+        Direction = p.Direction,
+        DurationMs = p.DurationMs,
+        ExpectedArcsec = p.ExpectedArcsec,
+        MovedArcsec = p.MovedArcsec,
+        Ratio = p.Ratio,
     };
 
     private static AdvancedCoachTrial ToDto(CoachTrial t) => new()
